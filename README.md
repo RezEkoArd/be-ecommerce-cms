@@ -1,53 +1,112 @@
-# claude-golang-template
+# be-ecommerce-cms
 
-Boilerplate konfigurasi Claude Code untuk project backend Go dengan stack:
-Gin + GORM v2 + PostgreSQL + godotenv + zerolog (via `pkg/logger`) + Golang-Migrate + Testify.
+Backend API untuk **E-Commerce CMS** — layanan yang menyediakan REST API untuk
+mengelola konten dan operasi toko online: produk, kategori, order, dan
+pengguna. Dipakai oleh dashboard admin (CMS) dan storefront frontend
+(`fe-cms-ecommerce`).
 
-Diambil dari konfigurasi yang sudah terbukti dipakai di project
-`be-cms-company-profile-web-tour`.
+Dibangun dengan Go: **Gin + GORM v2 + PostgreSQL + Viper + zerolog**, dengan
+autentikasi JWT (access + refresh token).
 
-## Isi
+## Stack
 
-```
-├── CLAUDE.md                    # Template konteks project — ISI PLACEHOLDER-nya
-└── .claude/
-    ├── rules/                   # Konvensi per topik, dimuat otomatis sesuai path file
-    │   ├── backend.md            # Layer dependency, interface, error wrap, context
-    │   ├── api-design.md         # ShouldBindJSON, response format, status code, routing
-    │   ├── logging.md            # pkg/logger, level log, field konteks, data sensitif
-    │   └── init.md               # Urutan inisialisasi main.go, config, logger, database
-    └── commands/                # Dipanggil manual dengan /nama
-        ├── add-rule.md           # /add-rule — tambah rule saat agent salah pattern
-        ├── check-convention.md   # /check-convention — checklist sebelum coding
-        └── audit-rules.md        # /audit-rules — bersihkan rules usang/duplikat
-```
+- **Web Framework:** Gin (`github.com/gin-gonic/gin`)
+- **ORM:** GORM v2 (`gorm.io/gorm`) + PostgreSQL driver (`gorm.io/driver/postgres`)
+- **Config:** Viper (`github.com/spf13/viper`) — baca `.env` + system env
+- **Logging:** zerolog via wrapper `pkg/logger`
+- **Auth:** JWT (access token via header, refresh token via cookie HttpOnly)
+- **Testing:** Testify (`github.com/stretchr/testify`)
 
-## Cara pakai di project baru
+## Fitur yang Direncanakan
+
+Cakupan aplikasi yang ingin dibangun. Tanda status menandai progres saat ini.
+
+| Domain | Deskripsi | Status |
+|---|---|---|
+| **Auth** | Register, login, refresh token, logout; JWT access + refresh dengan rotation | 🚧 Scaffolding |
+| **User** | Manajemen akun & role (admin CMS vs customer) | 🚧 Scaffolding |
+| **Product** | CRUD produk, harga, stok, gambar | 📋 Direncanakan |
+| **Category** | CRUD kategori & relasi produk-kategori | 📋 Direncanakan |
+| **Cart** | Keranjang belanja per customer | 📋 Direncanakan |
+| **Order** | Checkout, riwayat order, status order | 📋 Direncanakan |
+
+Legend: ✅ Selesai · 🚧 Sedang dikerjakan · 📋 Direncanakan
+
+## Prasyarat
+
+- Go 1.25+
+- PostgreSQL 14+
+
+## Setup
 
 ```bash
-# dari root project baru:
-cp -r ~/development/claude-golang-template/.claude .
-cp ~/development/claude-golang-template/CLAUDE.md .
+# 1. Salin env template dan isi nilainya
+cp .env.example .env
+
+# 2. Isi minimal: DB_* dan JWT_SECRET
+#    Generate JWT secret: openssl rand -base64 32
+
+# 3. Download dependency
+go mod download
+
+# 4. Jalankan aplikasi
+go run cmd/main.go
 ```
 
-Lalu:
+Server default jalan di `http://localhost:8080`. Cek health check:
 
-1. **Isi placeholder di `CLAUDE.md`** — `<NAMA_PROJECT>`, `<NAMA_BINARY>`,
-   `<DESKRIPSI_SINGKAT_PROJECT>`. Bisa juga jalankan `/init` di Claude Code lalu
-   minta Claude merge hasilnya ke template ini.
-2. **Cek struktur project** — rules mengasumsikan layout `cmd/` + `internal/` +
-   `pkg/logger` + `pkg/response`. Kalau layout berbeda, sesuaikan `paths:` di
-   frontmatter tiap file rules.
-3. Jalankan `/check-convention` sebagai tes bahwa rules terbaca.
+```bash
+curl http://localhost:8080/health
+# {"code":200,"message":"ok","data":null}
+```
 
-## Update rules ke depannya
+## Environment Variables
 
-Rules berevolusi lewat siklus di masing-masing project:
+Lihat [.env.example](.env.example) untuk daftar lengkap.
 
-- `/add-rule` — saat agent menulis kode yang salah pattern, tambahkan sebagai
-  contoh atau prinsip baru.
-- `/audit-rules` — jalankan setiap selesai feature besar atau 2 minggu untuk
-  memangkas duplikasi, rule TEMP kadaluarsa, dan section gemuk.
+| Variable | Deskripsi | Default |
+|---|---|---|
+| `APP_PORT` | Port HTTP server | `8080` |
+| `APP_ENV` | `development` (log console berwarna) / `production` (log JSON) | `development` |
+| `DB_HOST` | Host PostgreSQL | `localhost` |
+| `DB_PORT` | Port PostgreSQL | `5432` |
+| `DB_USER` | User database | — |
+| `DB_PASSWORD` | Password database | — (wajib, tanpa default) |
+| `DB_NAME` | Nama database | `ecommerce_cms` |
+| `DB_SSLMODE` | Mode SSL koneksi DB | `disable` |
+| `JWT_SECRET` | Secret untuk sign JWT | — (wajib, tanpa default) |
 
-Kalau hasil perbaikan di sebuah project layak dipakai project lain, salin balik
-perubahannya ke template ini supaya project baru berikutnya kebagian.
+## Build & Test
+
+- **Run app:** `go run cmd/main.go`
+- **Build:** `go build -o bin/be-ecommerce-cms cmd/main.go`
+- **Test all:** `go test ./... -v -cover`
+- **Test single package:** `go test ./internal/auth/... -v`
+- **Lint:** `golangci-lint run ./...`
+
+## Struktur Project
+
+```
+cmd/main.go              → Entry point, dependency injection, graceful shutdown
+internal/config/         → Load config via Viper
+internal/database/       → Koneksi PostgreSQL (GORM)
+internal/domain/         → Struct entity & error domain
+internal/auth/           → Autentikasi: handler, service, JWT
+internal/user/           → Manajemen user (repository, dst)
+pkg/logger/              → Wrapper logging zerolog
+pkg/response/            → Format response HTTP konsisten
+migrations/              → File SQL migration (up/down)
+```
+
+## Arsitektur
+
+Dependency mengalir satu arah: **Handler → Service → Repository**.
+
+- **Handler** — hanya tangani HTTP: parse request, panggil service, return response
+- **Service** — hanya business logic; tidak boleh import `gin`, `gorm`, atau `sql`
+- **Repository** — hanya akses DB via GORM; tidak boleh ada business logic
+
+Setiap layer didefinisikan sebagai **interface**, bukan concrete struct.
+
+Detail konvensi coding, logging, dan keamanan ada di [CLAUDE.md](CLAUDE.md) dan
+`.claude/rules/`.
