@@ -10,8 +10,10 @@ import (
 )
 
 func Connect(cfg *config.Config) *gorm.DB {
+	// Nilai dikutip agar config yang kosong (mis. password) tidak membuat
+	// parser DSN menelan keyword berikutnya.
 	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		"host='%s' port='%s' user='%s' password='%s' dbname='%s' sslmode='%s'",
 		cfg.DBHost,
 		cfg.DBPort,
 		cfg.DBUser,
@@ -30,5 +32,5 @@ func Connect(cfg *config.Config) *gorm.DB {
 		"name": cfg.DBName,
 	})
 
-	return  db
+	return db
 }
