@@ -1,0 +1,721 @@
+basePath: /api
+definitions:
+  auth.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        maxLength: 72
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  auth.RegisterRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      password:
+        maxLength: 72
+        minLength: 8
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  cart.AddItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
+  cart.UpdateItemRequest:
+    properties:
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - quantity
+    type: object
+  catalog.CreateCategoryRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - name
+    type: object
+  catalog.ProductRequest:
+    properties:
+      category_id:
+        type: string
+      description:
+        maxLength: 5000
+        type: string
+      name:
+        maxLength: 200
+        minLength: 2
+        type: string
+      price:
+        description: string → parse ke decimal
+        type: string
+      stock:
+        minimum: 0
+        type: integer
+    required:
+    - name
+    - price
+    type: object
+  order.CheckoutRequest:
+    properties:
+      coupon_code:
+        maxLength: 50
+        type: string
+    type: object
+  order.CreateCouponRequest:
+    properties:
+      code:
+        maxLength: 50
+        minLength: 3
+        type: string
+      discount_type:
+        enum:
+        - percent
+        - fixed
+        type: string
+      discount_value:
+        type: string
+      expires_at:
+        type: string
+      is_active:
+        type: boolean
+    required:
+    - code
+    - discount_type
+    - discount_value
+    type: object
+  response.Response:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: |-
+    REST API untuk E-Commerce CMS: auth, katalog produk, keranjang, dan order.
+    Endpoint tulis katalog & kupon hanya untuk admin.
+  title: E-Commerce CMS API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Mengembalikan access_token (Bearer) & menyetel refresh_token via
+        cookie HttpOnly.
+      parameters:
+      - description: Kredensial login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Login (customer atau admin)
+      tags:
+      - Auth
+  /auth/logout:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Logout (revoke refresh token & hapus cookie)
+      tags:
+      - Auth
+  /auth/refresh:
+    post:
+      description: Membaca refresh_token dari cookie, menerbitkan access_token baru
+        + rotasi refresh token.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Perbarui sesi (rotate refresh token)
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data registrasi
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Register akun customer baru
+      tags:
+      - Auth
+  /cart:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Lihat keranjang milik sendiri
+      tags:
+      - Cart
+  /cart/items:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Produk & jumlah
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/cart.AddItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Tambah item ke keranjang (qty digabung jika sudah ada)
+      tags:
+      - Cart
+  /cart/items/{productId}:
+    delete:
+      parameters:
+      - description: Product ID (UUID)
+        in: path
+        name: productId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Hapus satu item dari keranjang
+      tags:
+      - Cart
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Product ID (UUID)
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: Jumlah baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/cart.UpdateItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Ubah jumlah item (set absolut)
+      tags:
+      - Cart
+  /categories:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Daftar kategori (public)
+      tags:
+      - Category
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data kategori
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/catalog.CreateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Buat kategori (admin)
+      tags:
+      - Category
+  /coupons:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Daftar kupon (admin)
+      tags:
+      - Coupon
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 'Data kupon (discount_type: percent|fixed)'
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/order.CreateCouponRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Buat kupon (admin)
+      tags:
+      - Coupon
+  /orders:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Riwayat order milik sendiri
+      tags:
+      - Order
+    post:
+      consumes:
+      - application/json
+      description: Snapshot harga/nama, kurangi stok, kosongkan cart (transaksi).
+        coupon_code opsional.
+      parameters:
+      - description: Kode kupon (opsional)
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/order.CheckoutRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 'Checkout: buat order dari keranjang'
+      tags:
+      - Order
+  /orders/{id}:
+    get:
+      parameters:
+      - description: Order ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Detail order (hanya milik sendiri)
+      tags:
+      - Order
+  /products:
+    get:
+      parameters:
+      - description: Cari nama produk
+        in: query
+        name: search
+        type: string
+      - description: Filter per kategori (UUID)
+        in: query
+        name: category_id
+        type: string
+      - description: Batas item (default 10, maks 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset paginasi (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Daftar produk dengan filter & paginasi (public)
+      tags:
+      - Product
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data produk (price sebagai string)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/catalog.ProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Buat produk (admin)
+      tags:
+      - Product
+  /products/{id}:
+    delete:
+      parameters:
+      - description: Product ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Hapus produk (admin)
+      tags:
+      - Product
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Product ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data produk
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/catalog.ProductRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update produk (admin)
+      tags:
+      - Product
+  /products/{slug}:
+    get:
+      parameters:
+      - description: Slug produk
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Detail produk by slug (public)
+      tags:
+      - Product
+securityDefinitions:
+  BearerAuth:
+    description: 'Masukkan: "Bearer {access_token}" yang didapat dari /auth/login.'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

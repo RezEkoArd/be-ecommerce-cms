@@ -23,6 +23,10 @@ type Config struct {
 
 	// CookieSecure = true di production (HTTPS). Di dev lokal (HTTP) = false.
 	CookieSecure bool
+
+	// Seed admin default (opsional). Kalau salah satu kosong, seed di-skip.
+	AdminEmail    string
+	AdminPassword string
 }
 
 func Load() *Config {
@@ -60,6 +64,9 @@ func Load() *Config {
 		AccessTTL:    viper.GetDuration("ACCESS_TOKEN_TTL"),
 		RefreshTTL:   viper.GetDuration("REFRESH_TOKEN_TTL"),
 		CookieSecure: viper.GetBool("COOKIE_SECURE"),
+
+		AdminEmail:    viper.GetString("ADMIN_EMAIL"),
+		AdminPassword: viper.GetString("ADMIN_PASSWORD"),
 	}
 
 	return cfg

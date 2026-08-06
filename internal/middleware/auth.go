@@ -53,3 +53,17 @@ func GetRole(c *gin.Context) domain.Role {
 	r, _ := v.(domain.Role)
 	return r
 }
+
+func RequireRole(allowed ...domain.Role) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role := GetRole(c)
+		for _, r := range allowed {
+			if role == r {
+				c.Next()
+				return
+			}
+		}
+		c.JSON(http.StatusForbidden, response.NewResponse(403, "akses ditolak", nil))
+		c.Abort()
+	}
+}

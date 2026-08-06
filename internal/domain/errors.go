@@ -1,6 +1,8 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+)
 
 // Sentinel error = error bernama yang dimiliki domain.
 // Dipakai layer lain lewat errors.Is(err, domain.ErrXxx) untuk membedakan
@@ -23,4 +25,22 @@ var (
 
 	// ErrTokenExpired: refresh token sudah lewat masa berlakunya.
 	ErrTokenExpired = errors.New("refresh token expired")
+
+	// Product error Product list 
+	ErrProductNotFound = errors.New("product not found")
+
+	ErrCategoryNotFound = errors.New("category not found")
+
+	ErrSlugAlreadyExists = errors.New("slug already exists")
+
+	ErrInsufficientStock = errors.New("insufficient stock")
+
+	// error Cart 
+	ErrCartNotFound = errors.New("cart not found")
+	ErrCartItemNotFound = errors.New("cart item not found")
+
+	ErrOrderNotFound	= errors.New("order not found")
+	ErrCouponNotFound	= errors.New("coupon not found")
+	ErrCouponInvalid	= errors.New("coupon invalid or expired")
+	ErrCartEmpty		= errors.New("cart is empty")
 )
