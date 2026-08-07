@@ -1,6 +1,8 @@
 package config
 
 import (
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -24,6 +26,15 @@ type Config struct {
 	// CookieSecure = true di production (HTTPS). Di dev lokal (HTTP) = false.
 	CookieSecure bool
 
+	// CookieSameSite = mode SameSite untuk cookie refresh token.
+	// "strict" aman kalau FE dan BE satu origin (lewat proxy Next.js).
+	// "none" wajib kalau FE dan BE beda origin — dan "none" mensyaratkan Secure=true.
+	CookieSameSite string
+
+	// CORSAllowedOrigins = daftar origin frontend yang boleh akses API.
+	// Kosong = CORS mati (cocok kalau FE mengakses lewat proxy same-origin).
+	CORSAllowedOrigins []string
+
 	// Seed admin default (opsional). Kalau salah satu kosong, seed di-skip.
 	AdminEmail    string
 	AdminPassword string
@@ -43,6 +54,8 @@ func Load() *Config {
 	viper.SetDefault("ACCESS_TOKEN_TTL", "15m")
 	viper.SetDefault("REFRESH_TOKEN_TTL", "168h") // 7 hari
 	viper.SetDefault("COOKIE_SECURE", false)      // dev lokal HTTP; production set true
+	viper.SetDefault("COOKIE_SAMESITE", "strict") // "strict" | "lax" | "none"
+	viper.SetDefault("CORS_ALLOWED_ORIGINS", "")  // kosong = CORS mati
 	// Config sensitif TIDAK diberi default — biarkan kosong agar mudah dideteksi.
 	viper.SetDefault("DB_PASSWORD", "")
 	viper.SetDefault("JWT_SECRET", "")
@@ -65,9 +78,42 @@ func Load() *Config {
 		RefreshTTL:   viper.GetDuration("REFRESH_TOKEN_TTL"),
 		CookieSecure: viper.GetBool("COOKIE_SECURE"),
 
+		CookieSameSite:     strings.ToLower(viper.GetString("COOKIE_SAMESITE")),
+		CORSAllowedOrigins: parseOrigins(viper.GetString("CORS_ALLOWED_ORIGINS")),
+
 		AdminEmail:    viper.GetString("ADMIN_EMAIL"),
 		AdminPassword: viper.GetString("ADMIN_PASSWORD"),
 	}
 
 	return cfg
+}
+
+// parseOrigins memecah daftar origin dipisah koma menjadi slice yang sudah bersih.
+// Contoh: "http://localhost:3000, https://cms.example.com"
+func parseOrigins(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			origins = append(origins, strings.TrimSuffix(p, "/"))
+		}
+	}
+	return origins
+}
+
+// SameSiteMode menerjemahkan config string ke konstanta http.SameSite.
+// Nilai tak dikenal jatuh ke Strict — pilihan paling aman.
+func (c *Config) SameSiteMode() http.SameSite {
+	switch c.CookieSameSite {
+	case "none":
+		return http.SameSiteNoneMode
+	case "lax":
+		return http.SameSiteLaxMode
+	default:
+		return http.SameSiteStrictMode
+	}
 }

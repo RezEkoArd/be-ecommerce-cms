@@ -121,7 +121,9 @@ func (h *Handler) Logout(c *gin.Context) {
 }
 
 func (h *Handler) setRefreshCookie(c *gin.Context, token string) {
-	c.SetSameSite(http.SameSiteStrictMode) // WAJIB dipanggil sebelum SetCookie
+	// SameSite dari config: "strict" kalau FE satu origin (proxy),
+	// "none" kalau FE beda origin — "none" mensyaratkan Secure=true.
+	c.SetSameSite(h.cfg.SameSiteMode()) // WAJIB dipanggil sebelum SetCookie
 	c.SetCookie(
 		refreshCookieName,
 		token,
@@ -134,6 +136,7 @@ func (h *Handler) setRefreshCookie(c *gin.Context, token string) {
 }
 
 func (h *Handler) clearRefreshCookie(c *gin.Context) {
-	c.SetSameSite(http.SameSiteStrictMode)
+	// Atribut harus sama persis dengan saat di-set, kalau tidak cookie tidak terhapus.
+	c.SetSameSite(h.cfg.SameSiteMode())
 	c.SetCookie(refreshCookieName, "", -1, refreshCookiePath, "", h.cfg.CookieSecure, true)
 }

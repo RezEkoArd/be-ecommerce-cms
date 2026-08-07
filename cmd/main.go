@@ -46,6 +46,12 @@ func main() {
 
 	logger.Init(cfg.AppEnv)
 
+	// SameSite=None mensyaratkan Secure=true — browser modern menolak cookie
+	// None tanpa Secure, dan refresh token jadi tidak pernah terkirim.
+	if cfg.CookieSameSite == "none" && !cfg.CookieSecure {
+		logger.Warn("COOKIE_SAMESITE=none tanpa COOKIE_SECURE=true — browser akan menolak cookie refresh token")
+	}
+
 	db := database.Connect(cfg)
 	// _ = db
 
@@ -75,7 +81,7 @@ func main() {
 	orderSvc := order.NewService(orderRepo, cartSvc)
 	orderHandler := order.NewHandler(orderSvc)
 
-	r := setupRouter(authHandler, catalogHandler, cartHandler, orderHandler, tokenManager)
+	r := setupRouter(authHandler, catalogHandler, cartHandler, orderHandler, tokenManager, cfg)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.AppPort,
@@ -107,9 +113,14 @@ func main() {
 	logger.Info("Server exited")
 }
 
-func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, cartHandler *cart.Handler, orderHandler *order.Handler, tokens *auth.TokenManager) *gin.Engine {
+func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, cartHandler *cart.Handler, orderHandler *order.Handler, tokens *auth.TokenManager, cfg *config.Config) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+
+	if len(cfg.CORSAllowedOrigins) > 0 {
+		r.Use(middleware.CORS(cfg.CORSAllowedOrigins))
+		logger.Infof("CORS enabled", map[string]any{"origins": cfg.CORSAllowedOrigins})
+	}
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, response.NewResponse(200, "ok", nil))
