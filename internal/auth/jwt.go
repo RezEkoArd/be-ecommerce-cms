@@ -31,7 +31,7 @@ type TokenManager struct {
 
 func NewTokenManager(secret string, accessTTL, refreshTTL time.Duration) *TokenManager {
 	return &TokenManager{
-		secret:     []byte{},
+		secret:     []byte(secret),
 		accessTTL:  accessTTL,
 		refreshTTL: refreshTTL,
 	}

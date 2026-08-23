@@ -26,7 +26,7 @@ var (
 	// ErrTokenExpired: refresh token sudah lewat masa berlakunya.
 	ErrTokenExpired = errors.New("refresh token expired")
 
-	// Product error Product list 
+	// Product error Product list
 	ErrProductNotFound = errors.New("product not found")
 
 	ErrCategoryNotFound = errors.New("category not found")
@@ -35,12 +35,15 @@ var (
 
 	ErrInsufficientStock = errors.New("insufficient stock")
 
-	// error Cart 
-	ErrCartNotFound = errors.New("cart not found")
+	// error Cart
+	ErrCartNotFound     = errors.New("cart not found")
 	ErrCartItemNotFound = errors.New("cart item not found")
 
-	ErrOrderNotFound	= errors.New("order not found")
-	ErrCouponNotFound	= errors.New("coupon not found")
-	ErrCouponInvalid	= errors.New("coupon invalid or expired")
-	ErrCartEmpty		= errors.New("cart is empty")
+	ErrOrderNotFound       = errors.New("order not found")
+	ErrInvalidOrderStatus  = errors.New("invalid order status")
+	ErrCouponNotFound      = errors.New("coupon not found")
+	ErrCouponInvalid       = errors.New("coupon invalid or expired")
+	ErrCouponAlreadyExists = errors.New("coupon code already exists")
+	ErrDiscountTooLarge    = errors.New("percent discount cannot exceed 100")
+	ErrCartEmpty           = errors.New("cart is empty")
 )

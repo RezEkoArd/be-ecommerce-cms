@@ -13,10 +13,10 @@ import (
 	"gorm.io/gorm"
 )
 
-
 type Repository interface {
 	CreateCoupon(ctx context.Context, c *domain.Coupon) error
 	FindCouponByCode(ctx context.Context, code string) (*domain.Coupon, error)
+	FindCouponByID(ctx context.Context, id uuid.UUID) (*domain.Coupon, error)
 	ListCoupons(ctx context.Context) ([]domain.Coupon, error)
 	UpdateCoupon(ctx context.Context, c *domain.Coupon) error
 	DeleteCoupon(ctx context.Context, id uuid.UUID) error
@@ -24,6 +24,11 @@ type Repository interface {
 	CreateOrder(ctx context.Context, o *domain.Order, cartID uuid.UUID) error
 	FindOrderByID(ctx context.Context, id uuid.UUID) (*domain.Order, error)
 	ListOrdersByUser(ctx context.Context, userID uuid.UUID) ([]domain.Order, error)
+
+	// Admin — tanpa filter user_id.
+	ListAllOrders(ctx context.Context) ([]domain.Order, error)
+	FindOrderDetailByID(ctx context.Context, id uuid.UUID) (*domain.Order, error)
+	UpdateOrderStatus(ctx context.Context, id uuid.UUID, status domain.OrderStatus) error
 }
 
 type repository struct {
@@ -35,33 +40,33 @@ func NewRepository(db *gorm.DB) Repository {
 }
 
 type couponModel struct {
-	ID 	uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	Code 			string
-	DiscountType	string
-	DiscountValue	decimal.Decimal `gorm:"type:numeric(12,2)"`
-	ExpiresAt		*time.Time
-	IsActive		bool
+	ID            uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	Code          string
+	DiscountType  string
+	DiscountValue decimal.Decimal `gorm:"type:numeric(12,2)"`
+	ExpiresAt     *time.Time
+	IsActive      bool
 }
 
 func (couponModel) TableName() string { return "coupons" }
 
 type orderModel struct {
-	ID		uuid.UUID	`gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	UserID	uuid.UUID	`gorm:"type:uuid"`
-	CouponID	*uuid.UUID	`gorm:"type:uuid"`
-	Status	string
-	Subtotal	decimal.Decimal `gorm:"type:numeric(12,2)"`
-	Tax		decimal.Decimal	`gorm:"type:numeric(12,2)"`
-	Discount decimal.Decimal `gorm:"type:numberic(12,2)"`
-	Total	decimal.Decimal	`gorm:"type:numeric(12.2)"`
-	CreatedAt	time.Time
-	UpdatedAt	time.Time
+	ID        uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	UserID    uuid.UUID  `gorm:"type:uuid"`
+	CouponID  *uuid.UUID `gorm:"type:uuid"`
+	Status    string
+	Subtotal  decimal.Decimal `gorm:"type:numeric(12,2)"`
+	Tax       decimal.Decimal `gorm:"type:numeric(12,2)"`
+	Discount  decimal.Decimal `gorm:"type:numberic(12,2)"`
+	Total     decimal.Decimal `gorm:"type:numeric(12.2)"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
-func (orderModel) TableName() string {return "orders"}
+func (orderModel) TableName() string { return "orders" }
 
 type orderItemModel struct {
-		ID          uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	ID          uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	OrderID     uuid.UUID  `gorm:"type:uuid"`
 	ProductID   *uuid.UUID `gorm:"type:uuid"`
 	ProductName string
@@ -69,15 +74,15 @@ type orderItemModel struct {
 	Quantity    int
 }
 
-func (orderItemModel) TableName() string { return "order_items"}
+func (orderItemModel) TableName() string { return "order_items" }
 
 func couponToDomain(m couponModel) domain.Coupon {
 	return domain.Coupon{
 		ID: m.ID, Code: m.Code,
-		DiscountType: domain.DiscountType(m.DiscountType),
+		DiscountType:  domain.DiscountType(m.DiscountType),
 		DiscountValue: m.DiscountValue,
-		ExpiresAt: m.ExpiresAt,
-		IsActive: m.IsActive,
+		ExpiresAt:     m.ExpiresAt,
+		IsActive:      m.IsActive,
 	}
 }
 
@@ -98,11 +103,25 @@ func (r *repository) FindCouponByCode(ctx context.Context, code string) (*domain
 	var m couponModel
 	err := r.db.WithContext(ctx).Where("code = ?", code).First(&m).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound){
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domain.ErrCouponNotFound
 		}
 		logger.Errorf("orderRepository.FindCouponByCode failed", err, map[string]any{"code": code})
 		return nil, fmt.Errorf("orderRepository.FindCouponByCode: %w", err)
+	}
+	c := couponToDomain(m)
+	return &c, nil
+}
+
+func (r *repository) FindCouponByID(ctx context.Context, id uuid.UUID) (*domain.Coupon, error) {
+	var m couponModel
+	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrCouponNotFound
+		}
+		logger.Errorf("orderRepository.FindCouponByID failed", err, map[string]any{"coupon_id": id})
+		return nil, fmt.Errorf("orderRepository.FindCouponByID: %w", err)
 	}
 	c := couponToDomain(m)
 	return &c, nil
@@ -125,11 +144,11 @@ func (r *repository) UpdateCoupon(ctx context.Context, c *domain.Coupon) error {
 	err := r.db.WithContext(ctx).Model(&couponModel{}).
 		Where("id = ?", c.ID).
 		Updates(map[string]any{
-			"code": 	c.Code,
-			"discount_type": 	string(c.DiscountType),
-			"discount_value":	c.DiscountValue,
-			"expires_at": 		c.ExpiresAt,
-			"is_active":		c.IsActive,
+			"code":           c.Code,
+			"discount_type":  string(c.DiscountType),
+			"discount_value": c.DiscountValue,
+			"expires_at":     c.ExpiresAt,
+			"is_active":      c.IsActive,
 		}).Error
 	if err != nil {
 		logger.Errorf("orderRepository.UpdateCoupons failed", err, map[string]any{"coupon_id": c.ID})
@@ -152,7 +171,7 @@ func (r *repository) DeleteCoupon(ctx context.Context, id uuid.UUID) error {
 
 // create order
 func (r *repository) CreateOrder(ctx context.Context, o *domain.Order, cartID uuid.UUID) error {
-		// Semua operasi dibungkus 1 transaksi. Kalau ada yang return error,
+	// Semua operasi dibungkus 1 transaksi. Kalau ada yang return error,
 	// GORM otomatis ROLLBACK. Kalau fungsi return nil, otomatis COMMIT.
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -188,7 +207,7 @@ func (r *repository) CreateOrder(ctx context.Context, o *domain.Order, cartID uu
 			}
 			it.ID = im.ID
 			it.OrderID = om.ID
-			
+
 			// Kurangi stok. Guard "stock >= qty" mencegah stok minus kalau ada
 			// race — kalau tidak ada baris ter-update, berarti stok tak cukup.
 			if it.ProductID != nil {
@@ -222,7 +241,7 @@ func (r *repository) CreateOrder(ctx context.Context, o *domain.Order, cartID uu
 
 func (r *repository) FindOrderByID(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
 	var m orderModel
-	err := r.db.WithContext(ctx).First(&m, "id = ?",id).Error
+	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domain.ErrOrderNotFound
@@ -232,7 +251,7 @@ func (r *repository) FindOrderByID(ctx context.Context, id uuid.UUID) (*domain.O
 	}
 
 	o := orderToDomain(m)
-	
+
 	var items []orderItemModel
 	if err := r.db.WithContext(ctx).Where("order_id = ?", m.ID).Find(&items).Error; err != nil {
 		logger.Errorf("orderRepository.FindOrderByID items failed", err, map[string]any{"order_id": id})
@@ -241,13 +260,54 @@ func (r *repository) FindOrderByID(ctx context.Context, id uuid.UUID) (*domain.O
 	o.Items = make([]domain.OrderItem, 0, len(items))
 	for _, im := range items {
 		o.Items = append(o.Items, domain.OrderItem{
-		ID: im.ID, OrderID: im.OrderID, ProductID: im.ProductID,
-		ProductName: im.ProductName, Price: im.Price, Quantity: im.Quantity,
+			ID: im.ID, OrderID: im.OrderID, ProductID: im.ProductID,
+			ProductName: im.ProductName, Price: im.Price, Quantity: im.Quantity,
 		})
 	}
 	return &o, nil
 }
 
+// userSummaryModel = kolom user yang aman dikirim ke admin.
+// Sengaja tidak memakai model user penuh agar password_hash tidak ikut terbaca.
+type userSummaryModel struct {
+	ID    uuid.UUID
+	Name  string
+	Email string
+}
+
+// FindOrderDetailByID = FindOrderByID + relasi user & kupon, untuk modal detail admin.
+func (r *repository) FindOrderDetailByID(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+	o, err := r.FindOrderByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Pemesan. Kalau gagal dibaca, detail order tetap dikembalikan
+	// tanpa data user — relasi bukan alasan menggagalkan seluruh response.
+	var u userSummaryModel
+	err = r.db.WithContext(ctx).
+		Table("users").
+		Select("id", "name", "email").
+		Where("id = ?", o.UserID).
+		Take(&u).Error
+	if err == nil {
+		o.User = &domain.OrderUser{ID: u.ID, Name: u.Name, Email: u.Email}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Errorf("orderRepository.FindOrderDetailByID user failed", err, map[string]any{"order_id": id})
+	}
+
+	// Kupon (opsional — order bisa tanpa kupon).
+	if o.CouponID != nil {
+		coupon, err := r.FindCouponByID(ctx, *o.CouponID)
+		if err == nil {
+			o.Coupon = coupon
+		} else if !errors.Is(err, domain.ErrCouponNotFound) {
+			logger.Errorf("orderRepository.FindOrderDetailByID coupon failed", err, map[string]any{"order_id": id})
+		}
+	}
+
+	return o, nil
+}
 
 func (r *repository) ListOrdersByUser(ctx context.Context, userID uuid.UUID) ([]domain.Order, error) {
 	var ms []orderModel
@@ -259,14 +319,47 @@ func (r *repository) ListOrdersByUser(ctx context.Context, userID uuid.UUID) ([]
 	for _, m := range ms {
 		out = append(out, orderToDomain(m))
 	}
-	return out,nil
+	return out, nil
+}
+
+// ListAllOrders mengambil seluruh order tanpa filter user — khusus admin.
+func (r *repository) ListAllOrders(ctx context.Context) ([]domain.Order, error) {
+	var ms []orderModel
+	if err := r.db.WithContext(ctx).Order("created_at DESC").Find(&ms).Error; err != nil {
+		logger.Errorf("orderRepository.ListAllOrders failed", err, nil)
+		return nil, fmt.Errorf("orderRepository.ListAllOrders: %w", err)
+	}
+	out := make([]domain.Order, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, orderToDomain(m))
+	}
+	return out, nil
+}
+
+// UpdateOrderStatus mengubah status satu order.
+func (r *repository) UpdateOrderStatus(ctx context.Context, id uuid.UUID, status domain.OrderStatus) error {
+	res := r.db.WithContext(ctx).
+		Model(&orderModel{}).
+		Where("id = ?", id).
+		Update("status", string(status))
+
+	if res.Error != nil {
+		logger.Errorf("orderRepository.UpdateOrderStatus failed", res.Error, map[string]any{
+			"order_id": id, "status": status,
+		})
+		return fmt.Errorf("orderRepository.UpdateOrderStatus: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return domain.ErrOrderNotFound
+	}
+	return nil
 }
 
 // Helper
 func orderToDomain(m orderModel) domain.Order {
 	return domain.Order{
 		ID: m.ID, UserID: m.UserID, CouponID: m.CouponID,
-		Status: domain.OrderStatus(m.Status),
+		Status:   domain.OrderStatus(m.Status),
 		Subtotal: m.Subtotal, Tax: m.Tax, Discount: m.Discount, Total: m.Total,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}

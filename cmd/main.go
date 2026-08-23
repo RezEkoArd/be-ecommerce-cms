@@ -179,6 +179,14 @@ func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, car
 
 		admin.POST("/coupons", orderHandler.CreateCoupon)
 		admin.GET("/coupons", orderHandler.ListCoupons)
+		admin.GET("/coupons/:id", orderHandler.GetCoupon)
+		admin.PUT("/coupons/:id", orderHandler.UpdateCoupon)
+		admin.DELETE("/coupons/:id", orderHandler.DeleteCoupon)
+
+		// Order — admin melihat semua pesanan & mengubah statusnya.
+		admin.GET("/admin/orders", orderHandler.ListAllOrders)
+		admin.GET("/admin/orders/:id", orderHandler.GetOrderDetail)
+		admin.PATCH("/admin/orders/:id/status", orderHandler.UpdateOrderStatus)
 	}
 
 	return r
