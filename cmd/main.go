@@ -25,6 +25,7 @@ import (
 	"github.com/rezekoard/be-cms-ecommerce/internal/user"
 	"github.com/rezekoard/be-cms-ecommerce/pkg/logger"
 	"github.com/rezekoard/be-cms-ecommerce/pkg/response"
+	"github.com/rezekoard/be-cms-ecommerce/pkg/storage"
 )
 
 // @title           E-Commerce CMS API
@@ -68,7 +69,38 @@ func main() {
 
 	// Catalog: repo → service → handler
 	catalogRepo := catalog.NewRepository(db)
-	catalogSvc := catalog.NewService(catalogRepo)
+	// Object storage untuk gambar produk. Opsional — kalau belum
+	// dikonfigurasi, app tetap jalan dan endpoint gambar membalas 503.
+	var imageStorage catalog.ImageStorage
+	if cfg.MinioEndpoint != "" && cfg.MinioBucket != "" {
+		s, err := storage.New(storage.Config{
+			Endpoint:  cfg.MinioEndpoint,
+			AccessKey: cfg.MinioAccessKey,
+			SecretKey: cfg.MinioSecretKey,
+			Bucket:    cfg.MinioBucket,
+			UseSSL:    cfg.MinioUseSSL,
+			PublicURL: cfg.MinioPublicURL,
+		})
+		if err != nil {
+			logger.Fatal("Gagal inisialisasi object storage", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		exists, err := s.BucketExists(ctx)
+		cancel()
+		if err != nil {
+			logger.Errorf("Gagal cek bucket", err, map[string]any{"bucket": cfg.MinioBucket})
+		} else if !exists {
+			logger.Warn("Bucket tidak ditemukan: " + cfg.MinioBucket)
+		} else {
+			logger.Infof("Object storage siap", map[string]any{"bucket": cfg.MinioBucket})
+		}
+		imageStorage = s
+	} else {
+		logger.Warn("MINIO_ENDPOINT/MINIO_BUCKET kosong — fitur gambar produk nonaktif")
+	}
+
+	catalogSvc := catalog.NewService(catalogRepo, imageStorage)
 	catalogHandler := catalog.NewHandler(catalogSvc)
 
 	// Cart repo
@@ -176,6 +208,11 @@ func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, car
 		admin.POST("/products", catalogHandler.CreateProduct)
 		admin.PUT("/products/:id", catalogHandler.UpdateProduct)
 		admin.DELETE("/products/:id", catalogHandler.DeleteProduct)
+
+		// Gambar produk — presigned upload, lalu konfirmasi.
+		admin.POST("/products/:id/images/presign", catalogHandler.PresignProductImage)
+		admin.POST("/products/:id/images", catalogHandler.ConfirmProductImage)
+		admin.DELETE("/products/:id/images/:imageId", catalogHandler.DeleteProductImage)
 
 		admin.POST("/coupons", orderHandler.CreateCoupon)
 		admin.GET("/coupons", orderHandler.ListCoupons)

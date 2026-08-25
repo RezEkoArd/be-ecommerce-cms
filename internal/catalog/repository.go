@@ -36,6 +36,11 @@ type Repository interface {
 	FindProductBySlug(ctx context.Context, slug string) (*domain.Product, error)
 	ListProducts(ctx context.Context, f ProductFilter) ([]domain.Product, int64, error)
 	SlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
+
+	// Product images
+	AddProductImage(ctx context.Context, img *domain.ProductImage) error
+	DeleteProductImage(ctx context.Context, productID, imageID uuid.UUID) (*domain.ProductImage, error)
+	CountProductImages(ctx context.Context, productID uuid.UUID) (int64, error)
 }
 
 type repository struct {
@@ -193,6 +198,70 @@ func (r *repository) DeleteProduct(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// --- Product images ---
+
+func (r *repository) AddProductImage(ctx context.Context, img *domain.ProductImage) error {
+	m := &productImageModel{
+		ProductID: img.ProductID,
+		URL:       img.URL,
+		IsPrimary: img.IsPrimary,
+	}
+	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
+		logger.Errorf("catalogRepository.AddProductImage failed", err, map[string]any{
+			"product_id": img.ProductID,
+		})
+		return fmt.Errorf("catalogRepository.AddProductImage: %w", err)
+	}
+	img.ID = m.ID
+	img.CreatedAt = m.CreatedAt
+	return nil
+}
+
+// DeleteProductImage mengembalikan baris yang dihapus agar pemanggil
+// tahu object key mana yang perlu dibuang dari MinIO.
+func (r *repository) DeleteProductImage(ctx context.Context, productID, imageID uuid.UUID) (*domain.ProductImage, error) {
+	var m productImageModel
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND product_id = ?", imageID, productID).
+		First(&m).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrProductImageNotFound
+		}
+		logger.Errorf("catalogRepository.DeleteProductImage find failed", err, map[string]any{
+			"image_id": imageID,
+		})
+		return nil, fmt.Errorf("catalogRepository.DeleteProductImage: %w", err)
+	}
+
+	if err := r.db.WithContext(ctx).Delete(&productImageModel{}, "id = ?", imageID).Error; err != nil {
+		logger.Errorf("catalogRepository.DeleteProductImage failed", err, map[string]any{
+			"image_id": imageID,
+		})
+		return nil, fmt.Errorf("catalogRepository.DeleteProductImage: %w", err)
+	}
+
+	return &domain.ProductImage{
+		ID: m.ID, ProductID: m.ProductID, URL: m.URL,
+		IsPrimary: m.IsPrimary, CreatedAt: m.CreatedAt,
+	}, nil
+}
+
+func (r *repository) CountProductImages(ctx context.Context, productID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&productImageModel{}).
+		Where("product_id = ?", productID).
+		Count(&count).Error
+	if err != nil {
+		logger.Errorf("catalogRepository.CountProductImages failed", err, map[string]any{
+			"product_id": productID,
+		})
+		return 0, fmt.Errorf("catalogRepository.CountProductImages: %w", err)
+	}
+	return count, nil
+}
+
 func (r *repository) FindProductByID(ctx context.Context, id uuid.UUID) (*domain.Product, error) {
 	var m productModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
@@ -285,6 +354,36 @@ func (r *repository) ListProducts(ctx context.Context, f ProductFilter) ([]domai
 	for i := range ms {
 		out = append(out, ms[i].toDomain())
 	}
+
+	// Ambil gambar untuk semua produk sekaligus (hindari N+1).
+	if len(out) > 0 {
+		ids := make([]uuid.UUID, 0, len(out))
+		for i := range out {
+			ids = append(ids, out[i].ID)
+		}
+
+		var imgs []productImageModel
+		err := r.db.WithContext(ctx).
+			Where("product_id IN ?", ids).
+			Order("is_primary DESC, created_at ASC").
+			Find(&imgs).Error
+		if err != nil {
+			logger.Errorf("catalogRepository.ListProducts images failed", err, nil)
+			return nil, 0, fmt.Errorf("catalogRepository.ListProducts: %w", err)
+		}
+
+		byProduct := make(map[uuid.UUID][]domain.ProductImage, len(out))
+		for _, im := range imgs {
+			byProduct[im.ProductID] = append(byProduct[im.ProductID], domain.ProductImage{
+				ID: im.ID, ProductID: im.ProductID, URL: im.URL,
+				IsPrimary: im.IsPrimary, CreatedAt: im.CreatedAt,
+			})
+		}
+		for i := range out {
+			out[i].Images = byProduct[out[i].ID]
+		}
+	}
+
 	return out, total, nil
 }
 

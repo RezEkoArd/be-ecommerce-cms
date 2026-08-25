@@ -35,6 +35,15 @@ type Config struct {
 	// Kosong = CORS mati (cocok kalau FE mengakses lewat proxy same-origin).
 	CORSAllowedOrigins []string
 
+	// MinIO / S3 — penyimpanan gambar produk.
+	MinioEndpoint  string
+	MinioAccessKey string
+	MinioSecretKey string
+	MinioBucket    string
+	MinioUseSSL    bool
+	// URL publik untuk dipakai di <img>. Kosong = pakai MinioEndpoint.
+	MinioPublicURL string
+
 	// Seed admin default (opsional). Kalau salah satu kosong, seed di-skip.
 	AdminEmail    string
 	AdminPassword string
@@ -80,6 +89,13 @@ func Load() *Config {
 
 		CookieSameSite:     strings.ToLower(viper.GetString("COOKIE_SAMESITE")),
 		CORSAllowedOrigins: parseOrigins(viper.GetString("CORS_ALLOWED_ORIGINS")),
+
+		MinioEndpoint:  viper.GetString("MINIO_ENDPOINT"),
+		MinioAccessKey: viper.GetString("MINIO_ACCESS_KEY"),
+		MinioSecretKey: viper.GetString("MINIO_SECRET_KEY"),
+		MinioBucket:    viper.GetString("MINIO_BUCKET"),
+		MinioUseSSL:    viper.GetBool("MINIO_USE_SSL"),
+		MinioPublicURL: strings.TrimSuffix(viper.GetString("MINIO_PUBLIC_URL"), "/"),
 
 		AdminEmail:    viper.GetString("ADMIN_EMAIL"),
 		AdminPassword: viper.GetString("ADMIN_PASSWORD"),

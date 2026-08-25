@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -173,6 +174,85 @@ func (h *Handler) DeleteProduct(c *gin.Context) {
 	c.JSON(http.StatusOK, response.NewResponse(200, "barhasil menghapus product", nil))
 }
 
+// --- Product images ---
+
+type PresignImageRequest struct {
+	Filename string `json:"filename" binding:"required,max=255"`
+}
+
+// PresignProductImage — admin: minta URL upload bertanda tangan.
+func (h *Handler) PresignProductImage(c *gin.Context) {
+	productID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "id tidak valid", nil))
+		return
+	}
+
+	var req PresignImageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, response.ValidationMessage(err), nil))
+		return
+	}
+
+	out, err := h.svc.PresignProductImage(c.Request.Context(), productID, req.Filename)
+	if err != nil {
+		logger.Errorf("handler.PresignProductImage failed", err, map[string]any{"product_id": productID})
+		respondProductError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil membuat url upload", out))
+}
+
+type ConfirmImageRequest struct {
+	ObjectKey string `json:"object_key" binding:"required,max=500"`
+}
+
+// ConfirmProductImage — admin: catat gambar setelah upload selesai.
+func (h *Handler) ConfirmProductImage(c *gin.Context) {
+	productID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "id tidak valid", nil))
+		return
+	}
+
+	var req ConfirmImageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, response.ValidationMessage(err), nil))
+		return
+	}
+
+	img, err := h.svc.ConfirmProductImage(c.Request.Context(), productID, req.ObjectKey)
+	if err != nil {
+		logger.Errorf("handler.ConfirmProductImage failed", err, map[string]any{"product_id": productID})
+		respondProductError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, response.NewResponse(201, "berhasil menambah gambar", img))
+}
+
+func (h *Handler) DeleteProductImage(c *gin.Context) {
+	productID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "id produk tidak valid", nil))
+		return
+	}
+	imageID, err := uuid.Parse(c.Param("imageId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "id gambar tidak valid", nil))
+		return
+	}
+
+	if err := h.svc.DeleteProductImage(c.Request.Context(), productID, imageID); err != nil {
+		logger.Errorf("handler.DeleteProductImage failed", err, map[string]any{"image_id": imageID})
+		respondProductError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil menghapus gambar", nil))
+}
+
 func (h *Handler) GetProductBySlug(c *gin.Context) {
 	slug := c.Param("slug")
 
@@ -206,6 +286,13 @@ func respondProductError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, response.NewResponse(404, "kategori tidak ditemukan", nil))
 	case errors.Is(err, domain.ErrSlugAlreadyExists):
 		c.JSON(http.StatusConflict, response.NewResponse(409, "produk dengan nama serupa sudah ada", nil))
+	case errors.Is(err, domain.ErrProductImageNotFound):
+		c.JSON(http.StatusNotFound, response.NewResponse(404, "gambar tidak ditemukan", nil))
+	case errors.Is(err, domain.ErrTooManyProductImages):
+		c.JSON(http.StatusConflict, response.NewResponse(409,
+			fmt.Sprintf("maksimal %d gambar per produk", MaxProductImages), nil))
+	case errors.Is(err, domain.ErrStorageUnavailable):
+		c.JSON(http.StatusServiceUnavailable, response.NewResponse(503, "penyimpanan gambar belum dikonfigurasi", nil))
 	default:
 		c.JSON(http.StatusInternalServerError, response.NewResponse(500, "terjadi kesalahan internal", nil))
 	}

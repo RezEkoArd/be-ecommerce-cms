@@ -1,8 +1,11 @@
 ---
 paths:
   - "internal/handler/**/*.go"
+  - "internal/middleware/**/*.go"
   - "internal/midleware/**/*.go"
   - "internal/service/**/*.go"
+  - "internal/config/config.go"
+  - "cmd/main.go"
 ---
 
 # Keamanan — ichiba
@@ -89,6 +92,30 @@ Contoh kode Go untuk `SetCookie` ada di [`auth.md`](auth.md) §1.
 - `SameSite=Strict` (atau `Lax`) pada cookie refresh = pertahanan utama.
 - Endpoint `/refresh` bisa ditambah CSRF token untuk jaminan ekstra bila perlu.
 - Ingat: `HttpOnly` TIDAK mencegah CSRF — itu tugas `SameSite`.
+
+## CORS (`internal/middleware/cors.go`)
+
+Middleware `CORS(allowedOrigins)` aktif hanya kalau `CORS_ALLOWED_ORIGINS` diisi.
+Dipasang paling awal di `setupRouter` agar preflight `OPTIONS` tertangani sebelum route matching.
+
+### Aturan
+- ✅ Allowlist origin **eksplisit** — cocokkan `Origin` request, lalu pantulkan nilainya di `Access-Control-Allow-Origin`.
+- ✅ Selalu kirim `Vary: Origin` saat memantulkan origin, supaya cache tidak menukar respons antar origin.
+- ✅ Origin tak dikenal: **jangan** kirim header CORS sama sekali (browser yang memblokir); preflight-nya balas 403.
+- ✅ Request tanpa header `Origin` (curl, Postman, server-to-server) dibiarkan lewat — CORS itu proteksi browser, bukan autentikasi.
+- ❌ Jangan pakai `Access-Control-Allow-Origin: *` — spesifikasi melarangnya digabung dengan `Allow-Credentials: true`, dan endpoint auth kita mengirim cookie.
+- ❌ Jangan jadikan CORS sebagai kontrol akses. Ia tidak menggantikan `JWTAuth` / `RequireRole`.
+
+### SameSite harus cocok dengan cara FE mengakses
+
+| Cara akses | `CORS_ALLOWED_ORIGINS` | `COOKIE_SAMESITE` | Catatan |
+|---|---|---|---|
+| Proxy same-origin (rewrites Next.js) | kosong | `strict` | **Paling aman** — CORS tidak diperlukan |
+| Cross-origin dev (`:3000` → `:8080`) | `http://localhost:3000` | `lax` | `strict` bikin cookie refresh tidak terkirim |
+| Produksi beda domain | domain FE | `none` | **Wajib** `COOKIE_SECURE=true` |
+
+> ⚠️ `SameSite=Strict` + cross-origin = cookie refresh **tidak pernah dikirim** browser, sehingga `/refresh` selalu gagal. Kalau FE dan BE beda origin, `strict` bukan pilihan.
+> ⚠️ `SameSite=None` tanpa `Secure=true` ditolak browser modern. `main.go` mengeluarkan warning saat startup untuk kombinasi ini.
 
 ## Checklist sebelum rilis
 

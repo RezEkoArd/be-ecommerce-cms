@@ -11,6 +11,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/rezekoard/be-cms-ecommerce/internal/domain"
+	"github.com/rezekoard/be-cms-ecommerce/pkg/logger"
 )
 
 // Input DTO = data yang sudah tervalidasi dari handler.
@@ -48,14 +49,39 @@ type Service interface {
 	GetProductByID(ctx context.Context, id uuid.UUID) (*domain.Product, error)
 	GetProductBySlug(ctx context.Context, slug string) (*domain.Product, error)
 	ListProducts(ctx context.Context, f ProductFilter) ([]domain.Product, int64, error)
+
+	// Product images
+	PresignProductImage(ctx context.Context, productID uuid.UUID, filename string) (*PresignedUpload, error)
+	ConfirmProductImage(ctx context.Context, productID uuid.UUID, objectKey string) (*domain.ProductImage, error)
+	DeleteProductImage(ctx context.Context, productID, imageID uuid.UUID) error
+}
+
+// MaxProductImages membatasi jumlah gambar per produk.
+const MaxProductImages = 5
+
+// ImageStorage = kebutuhan catalog terhadap object storage, didefinisikan
+// di sisi konsumen agar package ini tidak terikat implementasi MinIO.
+type ImageStorage interface {
+	PresignedUpload(ctx context.Context, prefix, filename string) (uploadURL, objectKey string, err error)
+	PublicURL(objectKey string) string
+	ObjectKeyFromURL(rawURL string) string
+	Remove(ctx context.Context, objectKey string) error
+}
+
+// PresignedUpload = jawaban untuk frontend sebelum ia mengunggah file.
+type PresignedUpload struct {
+	UploadURL string `json:"upload_url"`
+	ObjectKey string `json:"object_key"`
+	PublicURL string `json:"public_url"`
 }
 
 type service struct {
-	repo Repository
+	repo    Repository
+	storage ImageStorage
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, storage ImageStorage) Service {
+	return &service{repo: repo, storage: storage}
 }
 
 // ---------- Category ----------
@@ -139,6 +165,88 @@ func (s *service) UpdateProduct(ctx context.Context, id uuid.UUID, in UpdateProd
 func (s *service) DeleteProduct(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.DeleteProduct(ctx, id); err != nil {
 		return fmt.Errorf("catalogService.DeleteProduct: %w", err)
+	}
+	return nil
+}
+
+// ---------- Product images ----------
+
+// PresignProductImage menyiapkan URL upload. Baris DB baru dibuat setelah
+// frontend memanggil ConfirmProductImage — supaya upload yang batal
+// tidak meninggalkan baris tanpa file.
+func (s *service) PresignProductImage(ctx context.Context, productID uuid.UUID, filename string) (*PresignedUpload, error) {
+	if s.storage == nil {
+		return nil, domain.ErrStorageUnavailable
+	}
+
+	// Pastikan produknya ada sebelum menerbitkan URL.
+	if _, err := s.repo.FindProductByID(ctx, productID); err != nil {
+		return nil, fmt.Errorf("catalogService.PresignProductImage: %w", err)
+	}
+
+	count, err := s.repo.CountProductImages(ctx, productID)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.PresignProductImage: %w", err)
+	}
+	if count >= MaxProductImages {
+		return nil, domain.ErrTooManyProductImages
+	}
+
+	prefix := "products/" + productID.String()
+	uploadURL, objectKey, err := s.storage.PresignedUpload(ctx, prefix, filename)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.PresignProductImage: %w", err)
+	}
+
+	return &PresignedUpload{
+		UploadURL: uploadURL,
+		ObjectKey: objectKey,
+		PublicURL: s.storage.PublicURL(objectKey),
+	}, nil
+}
+
+// ConfirmProductImage dipanggil frontend setelah file berhasil diunggah.
+func (s *service) ConfirmProductImage(ctx context.Context, productID uuid.UUID, objectKey string) (*domain.ProductImage, error) {
+	if s.storage == nil {
+		return nil, domain.ErrStorageUnavailable
+	}
+
+	count, err := s.repo.CountProductImages(ctx, productID)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.ConfirmProductImage: %w", err)
+	}
+	if count >= MaxProductImages {
+		return nil, domain.ErrTooManyProductImages
+	}
+
+	img := &domain.ProductImage{
+		ProductID: productID,
+		URL:       s.storage.PublicURL(objectKey),
+		// Gambar pertama otomatis jadi gambar utama.
+		IsPrimary: count == 0,
+	}
+	if err := s.repo.AddProductImage(ctx, img); err != nil {
+		return nil, fmt.Errorf("catalogService.ConfirmProductImage: %w", err)
+	}
+	return img, nil
+}
+
+func (s *service) DeleteProductImage(ctx context.Context, productID, imageID uuid.UUID) error {
+	deleted, err := s.repo.DeleteProductImage(ctx, productID, imageID)
+	if err != nil {
+		return fmt.Errorf("catalogService.DeleteProductImage: %w", err)
+	}
+
+	// Baris DB sudah hilang; kegagalan menghapus objek tidak dijadikan error
+	// agar admin tidak melihat kegagalan padahal gambarnya sudah lenyap dari UI.
+	if s.storage != nil {
+		if key := s.storage.ObjectKeyFromURL(deleted.URL); key != "" {
+			if err := s.storage.Remove(ctx, key); err != nil {
+				logger.Errorf("catalogService.DeleteProductImage storage failed", err, map[string]any{
+					"image_id": imageID, "object_key": key,
+				})
+			}
+		}
 	}
 	return nil
 }

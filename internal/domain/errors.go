@@ -33,6 +33,10 @@ var (
 
 	ErrSlugAlreadyExists = errors.New("slug already exists")
 
+	ErrProductImageNotFound = errors.New("product image not found")
+	ErrTooManyProductImages = errors.New("product image limit reached")
+	ErrStorageUnavailable   = errors.New("object storage not configured")
+
 	ErrInsufficientStock = errors.New("insufficient stock")
 
 	// error Cart
