@@ -205,6 +205,9 @@ func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, car
 	admin.Use(middleware.JWTAuth(tokens), middleware.RequireRole(domain.RoleAdmin))
 	{
 		admin.POST("/categories", catalogHandler.CreateCategory)
+		admin.GET("/categories/:id", catalogHandler.GetCategory)
+		admin.PUT("/categories/:id", catalogHandler.UpdateCategory)
+		admin.DELETE("/categories/:id", catalogHandler.DeleteCategory)
 		admin.POST("/products", catalogHandler.CreateProduct)
 		admin.PUT("/products/:id", catalogHandler.UpdateProduct)
 		admin.DELETE("/products/:id", catalogHandler.DeleteProduct)

@@ -30,6 +30,7 @@ var (
 	ErrProductNotFound = errors.New("product not found")
 
 	ErrCategoryNotFound = errors.New("category not found")
+	ErrCategoryInUse    = errors.New("category still used by products")
 
 	ErrSlugAlreadyExists = errors.New("slug already exists")
 

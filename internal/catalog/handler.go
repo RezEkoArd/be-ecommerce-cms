@@ -44,7 +44,7 @@ func (h *Handler) CreateCategory(c *gin.Context) {
 	cat, err := h.svc.CreateCategory(c.Request.Context(), CreateCategoryInput{Name: req.Name})
 	if err != nil {
 		logger.Errorf("handler.CreateCategory failed", err, map[string]any{"name": req.Name})
-		c.JSON(http.StatusInternalServerError, response.NewResponse(500, "terjadi kesalahan internal", nil))
+		respondProductError(c, err)
 		return
 	}
 
@@ -60,6 +60,59 @@ func (h *Handler) ListCategories(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil mengambil kategori", cats))
 }
+func (h *Handler) GetCategory(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "id tidak valid", nil))
+		return
+	}
+
+	cat, err := h.svc.GetCategory(c.Request.Context(), id)
+	if err != nil {
+		logger.Errorf("handler.GetCategory failed", err, map[string]any{"category_id": id})
+		respondProductError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil mengambil kategori", cat))
+}
+
+func (h *Handler) UpdateCategory(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "id tidak valid", nil))
+		return
+	}
+
+	var req CreateCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, response.ValidationMessage(err), nil))
+		return
+	}
+
+	cat, err := h.svc.UpdateCategory(c.Request.Context(), id, CreateCategoryInput{Name: req.Name})
+	if err != nil {
+		logger.Errorf("handler.UpdateCategory failed", err, map[string]any{"category_id": id})
+		respondProductError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil memperbarui kategori", cat))
+}
+
+func (h *Handler) DeleteCategory(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "id tidak valid", nil))
+		return
+	}
+
+	if err := h.svc.DeleteCategory(c.Request.Context(), id); err != nil {
+		logger.Errorf("handler.DeleteCategory failed", err, map[string]any{"category_id": id})
+		respondProductError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil menghapus kategori", nil))
+}
+
 func (h *Handler) ListProducts(c *gin.Context) {
 	f := ProductFilter{
 		Search: c.Query("search"),
@@ -284,8 +337,11 @@ func respondProductError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, response.NewResponse(404, "produk tidak ditemukan", nil))
 	case errors.Is(err, domain.ErrCategoryNotFound):
 		c.JSON(http.StatusNotFound, response.NewResponse(404, "kategori tidak ditemukan", nil))
+	case errors.Is(err, domain.ErrCategoryInUse):
+		c.JSON(http.StatusConflict, response.NewResponse(409,
+			"kategori masih dipakai produk, pindahkan produknya terlebih dahulu", nil))
 	case errors.Is(err, domain.ErrSlugAlreadyExists):
-		c.JSON(http.StatusConflict, response.NewResponse(409, "produk dengan nama serupa sudah ada", nil))
+		c.JSON(http.StatusConflict, response.NewResponse(409, "nama serupa sudah digunakan", nil))
 	case errors.Is(err, domain.ErrProductImageNotFound):
 		c.JSON(http.StatusNotFound, response.NewResponse(404, "gambar tidak ditemukan", nil))
 	case errors.Is(err, domain.ErrTooManyProductImages):

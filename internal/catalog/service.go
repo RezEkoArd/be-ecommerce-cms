@@ -41,6 +41,9 @@ type Service interface {
 	// Category
 	CreateCategory(ctx context.Context, in CreateCategoryInput) (*domain.Category, error)
 	ListCategories(ctx context.Context) ([]domain.Category, error)
+	GetCategory(ctx context.Context, id uuid.UUID) (*domain.Category, error)
+	UpdateCategory(ctx context.Context, id uuid.UUID, in CreateCategoryInput) (*domain.Category, error)
+	DeleteCategory(ctx context.Context, id uuid.UUID) error
 
 	// Product
 	CreateProduct(ctx context.Context, in CreateProductInput) (*domain.Product, error)
@@ -87,9 +90,19 @@ func NewService(repo Repository, storage ImageStorage) Service {
 // ---------- Category ----------
 
 func (s *service) CreateCategory(ctx context.Context, in CreateCategoryInput) (*domain.Category, error) {
+	slug := slugify(in.Name)
+
+	exists, err := s.repo.CategorySlugExists(ctx, slug, nil)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.CreateCategory: %w", err)
+	}
+	if exists {
+		return nil, domain.ErrSlugAlreadyExists
+	}
+
 	c := &domain.Category{
 		Name: strings.TrimSpace(in.Name),
-		Slug: slugify(in.Name),
+		Slug: slug,
 	}
 	if err := s.repo.CreateCategory(ctx, c); err != nil {
 		return nil, fmt.Errorf("catalogService.CreateCategory: %w", err)
@@ -103,6 +116,59 @@ func (s *service) ListCategories(ctx context.Context) ([]domain.Category, error)
 		return nil, fmt.Errorf("catalogService.ListCategories: %w", err)
 	}
 	return cats, nil
+}
+
+func (s *service) GetCategory(ctx context.Context, id uuid.UUID) (*domain.Category, error) {
+	c, err := s.repo.FindCategoryByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.GetCategory: %w", err)
+	}
+	return c, nil
+}
+
+func (s *service) UpdateCategory(ctx context.Context, id uuid.UUID, in CreateCategoryInput) (*domain.Category, error) {
+	c, err := s.repo.FindCategoryByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.UpdateCategory: %w", err)
+	}
+
+	slug := slugify(in.Name)
+	exists, err := s.repo.CategorySlugExists(ctx, slug, &id)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.UpdateCategory: %w", err)
+	}
+	if exists {
+		return nil, domain.ErrSlugAlreadyExists
+	}
+
+	c.Name = strings.TrimSpace(in.Name)
+	c.Slug = slug
+	if err := s.repo.UpdateCategory(ctx, c); err != nil {
+		return nil, fmt.Errorf("catalogService.UpdateCategory: %w", err)
+	}
+	return c, nil
+}
+
+// DeleteCategory menolak penghapusan kalau kategori masih dipakai produk.
+// DB memang ON DELETE SET NULL, tapi melepas puluhan produk dari kategorinya
+// tanpa sadar lebih merugikan daripada memaksa admin memindahkannya dulu.
+func (s *service) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	if _, err := s.repo.FindCategoryByID(ctx, id); err != nil {
+		return fmt.Errorf("catalogService.DeleteCategory: %w", err)
+	}
+
+	count, err := s.repo.CountProductsByCategory(ctx, id)
+	if err != nil {
+		return fmt.Errorf("catalogService.DeleteCategory: %w", err)
+	}
+	if count > 0 {
+		return domain.ErrCategoryInUse
+	}
+
+	if err := s.repo.DeleteCategory(ctx, id); err != nil {
+		return fmt.Errorf("catalogService.DeleteCategory: %w", err)
+	}
+	return nil
 }
 
 // ---------- Product ----------

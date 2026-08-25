@@ -27,6 +27,10 @@ type Repository interface {
 	CreateCategory(ctx context.Context, c *domain.Category) error
 	ListCategories(ctx context.Context) ([]domain.Category, error)
 	FindCategoryByID(ctx context.Context, id uuid.UUID) (*domain.Category, error)
+	UpdateCategory(ctx context.Context, c *domain.Category) error
+	DeleteCategory(ctx context.Context, id uuid.UUID) error
+	CountProductsByCategory(ctx context.Context, categoryID uuid.UUID) (int64, error)
+	CategorySlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
 
 	// Product
 	CreateProduct(ctx context.Context, p *domain.Product) error
@@ -129,7 +133,89 @@ func (r *repository) ListCategories(ctx context.Context) ([]domain.Category, err
 	for i := range ms {
 		out = append(out, ms[i].toDomain())
 	}
+
+	// Hitung produk per kategori dalam satu query agregat (hindari N+1).
+	if len(out) > 0 {
+		type countRow struct {
+			CategoryID uuid.UUID
+			Total      int64
+		}
+		var rows []countRow
+		err := r.db.WithContext(ctx).
+			Model(&productModel{}).
+			Select("category_id", "COUNT(*) AS total").
+			Where("category_id IS NOT NULL").
+			Group("category_id").
+			Scan(&rows).Error
+		if err != nil {
+			logger.Errorf("catalogRepository.ListCategories count failed", err, nil)
+			return nil, fmt.Errorf("catalogRepository.ListCategories: %w", err)
+		}
+
+		byCategory := make(map[uuid.UUID]int64, len(rows))
+		for _, row := range rows {
+			byCategory[row.CategoryID] = row.Total
+		}
+		for i := range out {
+			out[i].ProductCount = byCategory[out[i].ID]
+		}
+	}
+
 	return out, nil
+}
+
+func (r *repository) UpdateCategory(ctx context.Context, c *domain.Category) error {
+	res := r.db.WithContext(ctx).Model(&categoryModel{}).
+		Where("id = ?", c.ID).
+		Updates(map[string]any{"name": c.Name, "slug": c.Slug})
+
+	if res.Error != nil {
+		logger.Errorf("catalogRepository.UpdateCategory failed", res.Error, map[string]any{"category_id": c.ID})
+		return fmt.Errorf("catalogRepository.UpdateCategory: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return domain.ErrCategoryNotFound
+	}
+	return nil
+}
+
+func (r *repository) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	res := r.db.WithContext(ctx).Delete(&categoryModel{}, "id = ?", id)
+	if res.Error != nil {
+		logger.Errorf("catalogRepository.DeleteCategory failed", res.Error, map[string]any{"category_id": id})
+		return fmt.Errorf("catalogRepository.DeleteCategory: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return domain.ErrCategoryNotFound
+	}
+	return nil
+}
+
+func (r *repository) CountProductsByCategory(ctx context.Context, categoryID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&productModel{}).
+		Where("category_id = ?", categoryID).
+		Count(&count).Error
+	if err != nil {
+		logger.Errorf("catalogRepository.CountProductsByCategory failed", err, map[string]any{"category_id": categoryID})
+		return 0, fmt.Errorf("catalogRepository.CountProductsByCategory: %w", err)
+	}
+	return count, nil
+}
+
+// CategorySlugExists cek duplikasi slug kategori. excludeID diisi saat update.
+func (r *repository) CategorySlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
+	q := r.db.WithContext(ctx).Model(&categoryModel{}).Where("slug = ?", slug)
+	if excludeID != nil {
+		q = q.Where("id <> ?", *excludeID)
+	}
+	var count int64
+	if err := q.Count(&count).Error; err != nil {
+		logger.Errorf("catalogRepository.CategorySlugExists failed", err, map[string]any{"slug": slug})
+		return false, fmt.Errorf("catalogRepository.CategorySlugExists: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (r *repository) FindCategoryByID(ctx context.Context, id uuid.UUID) (*domain.Category, error) {
