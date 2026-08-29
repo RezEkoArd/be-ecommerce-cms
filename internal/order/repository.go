@@ -319,7 +319,41 @@ func (r *repository) ListOrdersByUser(ctx context.Context, userID uuid.UUID) ([]
 	for _, m := range ms {
 		out = append(out, orderToDomain(m))
 	}
+	if err := r.attachOrderItems(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// attachOrderItems mengisi Items untuk sekumpulan order dalam satu query
+// (hindari N+1). Dipakai ListOrdersByUser dan ListAllOrders.
+func (r *repository) attachOrderItems(ctx context.Context, orders []domain.Order) error {
+	if len(orders) == 0 {
+		return nil
+	}
+
+	ids := make([]uuid.UUID, 0, len(orders))
+	for i := range orders {
+		ids = append(ids, orders[i].ID)
+	}
+
+	var ims []orderItemModel
+	if err := r.db.WithContext(ctx).Where("order_id IN ?", ids).Find(&ims).Error; err != nil {
+		logger.Errorf("orderRepository.attachOrderItems failed", err, nil)
+		return fmt.Errorf("orderRepository.attachOrderItems: %w", err)
+	}
+
+	byOrder := make(map[uuid.UUID][]domain.OrderItem, len(orders))
+	for _, im := range ims {
+		byOrder[im.OrderID] = append(byOrder[im.OrderID], domain.OrderItem{
+			ID: im.ID, OrderID: im.OrderID, ProductID: im.ProductID,
+			ProductName: im.ProductName, Price: im.Price, Quantity: im.Quantity,
+		})
+	}
+	for i := range orders {
+		orders[i].Items = byOrder[orders[i].ID]
+	}
+	return nil
 }
 
 // ListAllOrders mengambil seluruh order tanpa filter user — khusus admin.
@@ -332,6 +366,9 @@ func (r *repository) ListAllOrders(ctx context.Context) ([]domain.Order, error) 
 	out := make([]domain.Order, 0, len(ms))
 	for _, m := range ms {
 		out = append(out, orderToDomain(m))
+	}
+	if err := r.attachOrderItems(ctx, out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
