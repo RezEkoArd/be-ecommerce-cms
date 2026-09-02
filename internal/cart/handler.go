@@ -12,13 +12,12 @@ import (
 	"github.com/rezekoard/be-cms-ecommerce/pkg/response"
 )
 
-
 type Handler struct {
 	svc Service
 }
 
 func NewHandler(svc Service) *Handler {
-	return  &Handler{svc: svc}
+	return &Handler{svc: svc}
 }
 
 // respondCartError menerjemahkan sentinel error domain → HTTP status.
@@ -30,7 +29,7 @@ func respondCartError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, response.NewResponse(404, "item tidak ditemukan", nil))
 	case errors.Is(err, domain.ErrInsufficientStock):
 		c.JSON(http.StatusConflict, response.NewResponse(409, "stok product tidak mencukupi", nil))
-	default: 
+	default:
 		c.JSON(http.StatusInternalServerError, response.NewResponse(500, "terjadi kesalahan internal", nil))
 	}
 }
@@ -38,7 +37,7 @@ func respondCartError(c *gin.Context, err error) {
 func (h *Handler) GetCart(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	cart,err := h.svc.GetCart(c.Request.Context(), userID)
+	cart, err := h.svc.GetCart(c.Request.Context(), userID)
 	if err != nil {
 		logger.Errorf("handlerCart.GetCart failed", err, map[string]any{"user_id": userID})
 		respondCartError(c, err)
@@ -50,9 +49,8 @@ func (h *Handler) GetCart(c *gin.Context) {
 
 type AddItemRequest struct {
 	ProductID string `json:"product_id" binding:"required,uuid"`
-	Quantity  int	`json:"quantity" binding:"required,gte=1"`
+	Quantity  int    `json:"quantity" binding:"required,gte=1"`
 }
-
 
 func (h *Handler) AddItem(c *gin.Context) {
 	userID := middleware.GetUserID(c)
@@ -66,12 +64,12 @@ func (h *Handler) AddItem(c *gin.Context) {
 	productID, err := uuid.Parse(req.ProductID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, response.NewResponse(400, "product_id tidak valid", nil))
-		return 
+		return
 	}
 
 	cart, err := h.svc.AddItem(c.Request.Context(), userID, AddItemInput{
 		ProductID: productID,
-		Quantity: req.Quantity,
+		Quantity:  req.Quantity,
 	})
 	if err != nil {
 		logger.Errorf("handler.Additem failed", err, map[string]any{"user_id": userID, "product_id": productID})
@@ -85,13 +83,12 @@ type UpdateItemRequest struct {
 	Quantity int `json:"quantity" binding:"required,gte=1"`
 }
 
-
 func (h *Handler) UpdateItem(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
 	productID, err := uuid.Parse(c.Param("productId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, response.NewResponse(400, "product_id tidak valid",nil))
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "product_id tidak valid", nil))
 		return
 	}
 
@@ -121,7 +118,7 @@ func (h *Handler) RemoveItem(c *gin.Context) {
 	cart, err := h.svc.RemoveItem(c.Request.Context(), userID, productID)
 	if err != nil {
 		logger.Errorf("handler.RemoveItem failed", err, map[string]any{"user_id": userID, "product_id": productID})
-		respondCartError(c,err)
+		respondCartError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil menghapus item", cart))

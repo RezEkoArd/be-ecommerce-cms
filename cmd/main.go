@@ -14,6 +14,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	_ "github.com/rezekoard/be-cms-ecommerce/docs" // spec swagger hasil `swag init`
+	"github.com/rezekoard/be-cms-ecommerce/internal/address"
 	"github.com/rezekoard/be-cms-ecommerce/internal/auth"
 	"github.com/rezekoard/be-cms-ecommerce/internal/cart"
 	"github.com/rezekoard/be-cms-ecommerce/internal/catalog"
@@ -57,6 +58,12 @@ func main() {
 	// _ = db
 
 	userRepo := user.NewRepository(db)
+	userSvc := user.NewService(userRepo)
+	userHandler := user.NewHandler(userSvc)
+
+	addressRepo := address.NewRepository(db)
+	addressSvc := address.NewService(addressRepo)
+	addressHandler := address.NewHandler(addressSvc)
 
 	// Seed admin default (idempotent) — kalau ADMIN_* kosong, otomatis di-skip.
 	if err := auth.SeedAdmin(context.Background(), userRepo, cfg); err != nil {
@@ -110,10 +117,10 @@ func main() {
 
 	// order repo
 	orderRepo := order.NewRepository(db)
-	orderSvc := order.NewService(orderRepo, cartSvc)
+	orderSvc := order.NewService(orderRepo, cartSvc, addressSvc)
 	orderHandler := order.NewHandler(orderSvc)
 
-	r := setupRouter(authHandler, catalogHandler, cartHandler, orderHandler, tokenManager, cfg)
+	r := setupRouter(authHandler, catalogHandler, cartHandler, orderHandler, userHandler, addressHandler, tokenManager, cfg)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.AppPort,
@@ -145,7 +152,7 @@ func main() {
 	logger.Info("Server exited")
 }
 
-func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, cartHandler *cart.Handler, orderHandler *order.Handler, tokens *auth.TokenManager, cfg *config.Config) *gin.Engine {
+func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, cartHandler *cart.Handler, orderHandler *order.Handler, userHandler *user.Handler, addressHandler *address.Handler, tokens *auth.TokenManager, cfg *config.Config) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -180,12 +187,16 @@ func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, car
 	protected := api.Group("")
 	protected.Use(middleware.JWTAuth(tokens))
 	{
-		protected.GET("/me", func(c *gin.Context) {
-			c.JSON(http.StatusOK, response.NewResponse(200, "berhasil", gin.H{
-				"user_id": middleware.GetUserID(c),
-				"role":    middleware.GetRole(c),
-			}))
-		})
+		protected.GET("/me", userHandler.GetProfile)
+		protected.PUT("/me", userHandler.UpdateProfile)
+		protected.PUT("/me/password", userHandler.ChangePassword)
+
+		// Alamat pengiriman milik user sendiri.
+		protected.GET("/addresses", addressHandler.List)
+		protected.POST("/addresses", addressHandler.Create)
+		protected.PUT("/addresses/:id", addressHandler.Update)
+		protected.DELETE("/addresses/:id", addressHandler.Delete)
+		protected.PUT("/addresses/:id/primary", addressHandler.SetPrimary)
 
 		// cart
 		protected.GET("/cart", cartHandler.GetCart)
@@ -208,6 +219,7 @@ func setupRouter(authHandler *auth.Handler, catalogHandler *catalog.Handler, car
 		admin.GET("/categories/:id", catalogHandler.GetCategory)
 		admin.PUT("/categories/:id", catalogHandler.UpdateCategory)
 		admin.DELETE("/categories/:id", catalogHandler.DeleteCategory)
+		admin.POST("/categories/images/presign", catalogHandler.PresignCategoryImage)
 		admin.POST("/products", catalogHandler.CreateProduct)
 		admin.PUT("/products/:id", catalogHandler.UpdateProduct)
 		admin.DELETE("/products/:id", catalogHandler.DeleteProduct)

@@ -18,7 +18,8 @@ import (
 // Service tidak tahu soal HTTP/binding — cukup terima nilai apa adanya.
 
 type CreateCategoryInput struct {
-	Name string
+	Name     string
+	ImageURL string
 }
 
 type CreateProductInput struct {
@@ -44,6 +45,7 @@ type Service interface {
 	GetCategory(ctx context.Context, id uuid.UUID) (*domain.Category, error)
 	UpdateCategory(ctx context.Context, id uuid.UUID, in CreateCategoryInput) (*domain.Category, error)
 	DeleteCategory(ctx context.Context, id uuid.UUID) error
+	PresignCategoryImage(ctx context.Context, filename string) (*PresignedUpload, error)
 
 	// Product
 	CreateProduct(ctx context.Context, in CreateProductInput) (*domain.Product, error)
@@ -101,8 +103,9 @@ func (s *service) CreateCategory(ctx context.Context, in CreateCategoryInput) (*
 	}
 
 	c := &domain.Category{
-		Name: strings.TrimSpace(in.Name),
-		Slug: slug,
+		Name:     strings.TrimSpace(in.Name),
+		Slug:     slug,
+		ImageURL: strings.TrimSpace(in.ImageURL),
 	}
 	if err := s.repo.CreateCategory(ctx, c); err != nil {
 		return nil, fmt.Errorf("catalogService.CreateCategory: %w", err)
@@ -143,6 +146,7 @@ func (s *service) UpdateCategory(ctx context.Context, id uuid.UUID, in CreateCat
 
 	c.Name = strings.TrimSpace(in.Name)
 	c.Slug = slug
+	c.ImageURL = strings.TrimSpace(in.ImageURL)
 	if err := s.repo.UpdateCategory(ctx, c); err != nil {
 		return nil, fmt.Errorf("catalogService.UpdateCategory: %w", err)
 	}
@@ -169,6 +173,26 @@ func (s *service) DeleteCategory(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("catalogService.DeleteCategory: %w", err)
 	}
 	return nil
+}
+
+// PresignCategoryImage menerbitkan URL upload untuk gambar sampul kategori.
+// Tidak butuh ID kategori — gambar boleh diunggah sebelum kategori dibuat,
+// lalu URL-nya dikirim bersama form.
+func (s *service) PresignCategoryImage(ctx context.Context, filename string) (*PresignedUpload, error) {
+	if s.storage == nil {
+		return nil, domain.ErrStorageUnavailable
+	}
+
+	uploadURL, objectKey, err := s.storage.PresignedUpload(ctx, "categories", filename)
+	if err != nil {
+		return nil, fmt.Errorf("catalogService.PresignCategoryImage: %w", err)
+	}
+
+	return &PresignedUpload{
+		UploadURL: uploadURL,
+		ObjectKey: objectKey,
+		PublicURL: s.storage.PublicURL(objectKey),
+	}, nil
 }
 
 // ---------- Product ----------

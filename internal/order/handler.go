@@ -26,6 +26,8 @@ func respondOrderError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrOrderNotFound):
 		c.JSON(http.StatusNotFound, response.NewResponse(404, "pesanan tidak ditemukan", nil))
+	case errors.Is(err, domain.ErrAddressNotFound):
+		c.JSON(http.StatusNotFound, response.NewResponse(404, "alamat pengiriman tidak ditemukan", nil))
 	case errors.Is(err, domain.ErrCartEmpty):
 		c.JSON(http.StatusBadRequest, response.NewResponse(400, "keranjang kosong", nil))
 	case errors.Is(err, domain.ErrCouponNotFound):
@@ -48,6 +50,7 @@ func respondOrderError(c *gin.Context, err error) {
 }
 
 type CheckoutRequest struct {
+	AddressID  string `json:"address_id"  binding:"required,uuid"`
 	CouponCode string `json:"coupon_code" binding:"omitempty,max=50"`
 }
 
@@ -56,10 +59,20 @@ func (h *Handler) Checkout(c *gin.Context) {
 
 	var req CheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		req.CouponCode = ""
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, response.ValidationMessage(err), nil))
+		return
 	}
 
-	o, err := h.svc.Checkout(c.Request.Context(), userID, req.CouponCode)
+	addressID, err := uuid.Parse(req.AddressID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, "address_id tidak valid", nil))
+		return
+	}
+
+	o, err := h.svc.Checkout(c.Request.Context(), userID, CheckoutInput{
+		AddressID:  addressID,
+		CouponCode: req.CouponCode,
+	})
 	if err != nil {
 		logger.Errorf("handler.Checkout failed", err, map[string]any{"user_id": userID})
 		respondOrderError(c, err)

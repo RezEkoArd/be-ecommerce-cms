@@ -24,6 +24,8 @@ func NewHandler(svc Service) *Handler {
 
 type CreateCategoryRequest struct {
 	Name string `json:"name" binding:"required,min=2,max=100"`
+	// ImageURL opsional: URL gambar sampul hasil upload ke MinIO.
+	ImageURL string `json:"image_url" binding:"omitempty,url,max=500"`
 }
 
 type ProductRequest struct {
@@ -41,7 +43,7 @@ func (h *Handler) CreateCategory(c *gin.Context) {
 		return
 	}
 
-	cat, err := h.svc.CreateCategory(c.Request.Context(), CreateCategoryInput{Name: req.Name})
+	cat, err := h.svc.CreateCategory(c.Request.Context(), CreateCategoryInput{Name: req.Name, ImageURL: req.ImageURL})
 	if err != nil {
 		logger.Errorf("handler.CreateCategory failed", err, map[string]any{"name": req.Name})
 		respondProductError(c, err)
@@ -89,7 +91,7 @@ func (h *Handler) UpdateCategory(c *gin.Context) {
 		return
 	}
 
-	cat, err := h.svc.UpdateCategory(c.Request.Context(), id, CreateCategoryInput{Name: req.Name})
+	cat, err := h.svc.UpdateCategory(c.Request.Context(), id, CreateCategoryInput{Name: req.Name, ImageURL: req.ImageURL})
 	if err != nil {
 		logger.Errorf("handler.UpdateCategory failed", err, map[string]any{"category_id": id})
 		respondProductError(c, err)
@@ -111,6 +113,23 @@ func (h *Handler) DeleteCategory(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil menghapus kategori", nil))
+}
+
+// PresignCategoryImage — admin: minta URL upload gambar kategori.
+func (h *Handler) PresignCategoryImage(c *gin.Context) {
+	var req PresignImageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.NewResponse(400, response.ValidationMessage(err), nil))
+		return
+	}
+
+	out, err := h.svc.PresignCategoryImage(c.Request.Context(), req.Filename)
+	if err != nil {
+		logger.Errorf("handler.PresignCategoryImage failed", err, nil)
+		respondProductError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.NewResponse(200, "berhasil membuat url upload", out))
 }
 
 func (h *Handler) ListProducts(c *gin.Context) {

@@ -19,6 +19,12 @@ var (
 	// terdaftar (lihat security.md: jangan beri tahu penyerang email valid).
 	ErrInvalidCredentials = errors.New("invalid credentials")
 
+	// ErrSamePassword: password baru sama dengan yang lama.
+	ErrSamePassword = errors.New("new password must differ from current")
+
+	ErrAddressNotFound     = errors.New("address not found")
+	ErrCannotDeletePrimary = errors.New("cannot delete primary address")
+
 	// ErrTokenReuse: refresh token yang sudah di-revoke dipakai lagi → indikasi
 	// token dicuri. Respons: revoke SEMUA sesi user (lihat auth.md §3).
 	ErrTokenReuse = errors.New("refresh token reuse detected")

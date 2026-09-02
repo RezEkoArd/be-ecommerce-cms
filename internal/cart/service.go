@@ -9,9 +9,9 @@ import (
 	"github.com/rezekoard/be-cms-ecommerce/internal/domain"
 )
 
-type AddItemInput struct{
-	ProductID	uuid.UUID
-	Quantity	int
+type AddItemInput struct {
+	ProductID uuid.UUID
+	Quantity  int
 }
 
 type Service interface {
@@ -26,12 +26,11 @@ type service struct {
 }
 
 func NewService(repo Repository) Service {
-	return  &service{repo: repo}
+	return &service{repo: repo}
 }
 
-
 func (s *service) GetCart(ctx context.Context, userID uuid.UUID) (*domain.Cart, error) {
-	if  _, err := s.repo.GetOrCreateCart(ctx, userID); err != nil {
+	if _, err := s.repo.GetOrCreateCart(ctx, userID); err != nil {
 		return nil, fmt.Errorf("cartService.GetCart: %w", err)
 	}
 	cart, err := s.repo.FindCartByUserID(ctx, userID)
@@ -102,18 +101,18 @@ func (s *service) UpdateItem(ctx context.Context, userID, productID uuid.UUID, q
 		return nil, fmt.Errorf("cartService.UpdateItem: %w", err)
 	}
 
-	return s.repo.FindCartByUserID(ctx, userID);
-} 
+	return s.repo.FindCartByUserID(ctx, userID)
+}
 
 func (s *service) RemoveItem(ctx context.Context, userID, productID uuid.UUID) (*domain.Cart, error) {
-	cart, err := s.repo.GetOrCreateCart(ctx, userID) 
+	cart, err := s.repo.GetOrCreateCart(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("cartService.remove: %w", err)
 	}
-	
+
 	if err := s.repo.DeleteItem(ctx, cart.ID, productID); err != nil {
 		return nil, fmt.Errorf("cartService.RemoveItem: %w", err)
 	}
 
-	return  s.repo.FindCartByUserID(ctx, userID)
+	return s.repo.FindCartByUserID(ctx, userID)
 }

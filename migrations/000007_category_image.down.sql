@@ -1,0 +1,2 @@
+ALTER TABLE categories DROP COLUMN image_url;
+ALTER TABLE categories ADD COLUMN icon VARCHAR(16) NOT NULL DEFAULT '';

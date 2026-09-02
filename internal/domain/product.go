@@ -8,9 +8,11 @@ import (
 )
 
 type Category struct {
-	ID        uuid.UUID
-	Name      string
-	Slug      string
+	ID   uuid.UUID
+	Name string
+	Slug string
+	// ImageURL = gambar sampul kategori (URL publik MinIO). Boleh kosong.
+	ImageURL  string
 	CreatedAt time.Time
 
 	// ProductCount diisi saat list kategori — jumlah produk di kategori ini.

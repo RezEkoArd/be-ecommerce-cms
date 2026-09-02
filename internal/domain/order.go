@@ -34,15 +34,17 @@ type Coupon struct {
 }
 
 type Order struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	CouponID  *uuid.UUID
-	Status    OrderStatus
-	Subtotal  decimal.Decimal
-	Tax       decimal.Decimal
-	Discount  decimal.Decimal
-	Total     decimal.Decimal
-	Items     []OrderItem
+	ID       uuid.UUID
+	UserID   uuid.UUID
+	CouponID *uuid.UUID
+	Status   OrderStatus
+	Subtotal decimal.Decimal
+	Tax      decimal.Decimal
+	Discount decimal.Decimal
+	Total    decimal.Decimal
+	Items    []OrderItem
+	// Snapshot alamat saat checkout — tidak berubah meski alamat user diedit.
+	Shipping  ShippingAddress
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
@@ -57,6 +59,15 @@ type OrderUser struct {
 	ID    uuid.UUID
 	Name  string
 	Email string
+}
+
+// ShippingAddress = salinan alamat pengiriman di dalam pesanan.
+type ShippingAddress struct {
+	Recipient  string
+	Phone      string
+	Street     string
+	City       string
+	PostalCode string
 }
 
 type OrderItem struct {

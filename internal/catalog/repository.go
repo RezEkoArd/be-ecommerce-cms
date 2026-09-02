@@ -61,6 +61,7 @@ type categoryModel struct {
 	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	Name      string
 	Slug      string
+	ImageURL  string
 	CreatedAt time.Time
 }
 
@@ -93,7 +94,7 @@ func (productImageModel) TableName() string { return "product_images" }
 // ---------- konversi ----------
 
 func (m *categoryModel) toDomain() domain.Category {
-	return domain.Category{ID: m.ID, Name: m.Name, Slug: m.Slug, CreatedAt: m.CreatedAt}
+	return domain.Category{ID: m.ID, Name: m.Name, Slug: m.Slug, ImageURL: m.ImageURL, CreatedAt: m.CreatedAt}
 }
 
 func (m *productModel) toDomain() domain.Product {
@@ -113,7 +114,7 @@ func (m *productModel) toDomain() domain.Product {
 // ---------- Category ----------
 
 func (r *repository) CreateCategory(ctx context.Context, c *domain.Category) error {
-	m := &categoryModel{Name: c.Name, Slug: c.Slug}
+	m := &categoryModel{Name: c.Name, Slug: c.Slug, ImageURL: c.ImageURL}
 	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
 		logger.Errorf("catalogRepository.CreateCategory failed", err, map[string]any{"slug": c.Slug})
 		return fmt.Errorf("catalogRepository.CreateCategory: %w", err)
@@ -167,7 +168,7 @@ func (r *repository) ListCategories(ctx context.Context) ([]domain.Category, err
 func (r *repository) UpdateCategory(ctx context.Context, c *domain.Category) error {
 	res := r.db.WithContext(ctx).Model(&categoryModel{}).
 		Where("id = ?", c.ID).
-		Updates(map[string]any{"name": c.Name, "slug": c.Slug})
+		Updates(map[string]any{"name": c.Name, "slug": c.Slug, "image_url": c.ImageURL})
 
 	if res.Error != nil {
 		logger.Errorf("catalogRepository.UpdateCategory failed", res.Error, map[string]any{"category_id": c.ID})

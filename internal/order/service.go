@@ -17,6 +17,12 @@ type CartReader interface {
 	GetCart(ctx context.Context, userID uuid.UUID) (*domain.Cart, error)
 }
 
+// AddressReader = kebutuhan order terhadap alamat, didefinisikan di sisi
+// konsumen. address.Service kebetulan memenuhi ini.
+type AddressReader interface {
+	Get(ctx context.Context, userID, id uuid.UUID) (*domain.Address, error)
+}
+
 type CreateCouponInput struct {
 	Code          string
 	DiscountType  domain.DiscountType
@@ -42,7 +48,7 @@ type Service interface {
 	UpdateCoupon(ctx context.Context, id uuid.UUID, in UpdateCouponInput) (*domain.Coupon, error)
 	DeleteCoupon(ctx context.Context, id uuid.UUID) error
 
-	Checkout(ctx context.Context, userID uuid.UUID, couponCode string) (*domain.Order, error)
+	Checkout(ctx context.Context, userID uuid.UUID, in CheckoutInput) (*domain.Order, error)
 	ListMyOrders(ctx context.Context, userID uuid.UUID) ([]domain.Order, error)
 	GetOrder(ctx context.Context, userID, orderID uuid.UUID) (*domain.Order, error)
 
@@ -52,13 +58,20 @@ type Service interface {
 	UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, status domain.OrderStatus) error
 }
 
-type service struct {
-	repo Repository
-	cart CartReader
+// CheckoutInput = pilihan user saat checkout.
+type CheckoutInput struct {
+	AddressID  uuid.UUID
+	CouponCode string
 }
 
-func NewService(repo Repository, cart CartReader) Service {
-	return &service{repo: repo, cart: cart}
+type service struct {
+	repo    Repository
+	cart    CartReader
+	address AddressReader
+}
+
+func NewService(repo Repository, cart CartReader, address AddressReader) Service {
+	return &service{repo: repo, cart: cart, address: address}
 }
 
 func (s *service) CreateCoupon(ctx context.Context, in CreateCouponInput) (*domain.Coupon, error) {
@@ -156,7 +169,14 @@ func (s *service) DeleteCoupon(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *service) Checkout(ctx context.Context, userID uuid.UUID, couponCode string) (*domain.Order, error) {
+func (s *service) Checkout(ctx context.Context, userID uuid.UUID, in CheckoutInput) (*domain.Order, error) {
+	// 0. Alamat pengiriman wajib — barang harus punya tujuan.
+	//    Get() menyaring per user, jadi alamat orang lain otomatis ditolak.
+	addr, err := s.address.Get(ctx, userID, in.AddressID)
+	if err != nil {
+		return nil, fmt.Errorf("orderService.Checkout: %w", err)
+	}
+
 	// 1. Ambil cart user (GetCart auto-create, jadi selalu ada objeknya).
 	cart, err := s.cart.GetCart(ctx, userID)
 	if err != nil {
@@ -189,8 +209,8 @@ func (s *service) Checkout(ctx context.Context, userID uuid.UUID, couponCode str
 	// 3. Kupon (opsional). Kalau ada kode, validasi & hitung diskon.
 	var couponID *uuid.UUID
 	discount := decimal.Zero
-	if couponCode != "" {
-		coupon, err := s.repo.FindCouponByCode(ctx, couponCode)
+	if in.CouponCode != "" {
+		coupon, err := s.repo.FindCouponByCode(ctx, in.CouponCode)
 		if err != nil {
 			return nil, fmt.Errorf("orderService.Checkout: %w", err)
 		}
@@ -216,6 +236,13 @@ func (s *service) Checkout(ctx context.Context, userID uuid.UUID, couponCode str
 		Discount: discount,
 		Total:    total,
 		Items:    items,
+		Shipping: domain.ShippingAddress{
+			Recipient:  addr.Recipient,
+			Phone:      addr.Phone,
+			Street:     addr.Street,
+			City:       addr.City,
+			PostalCode: addr.PostalCode,
+		},
 	}
 	if err := s.repo.CreateOrder(ctx, o, cart.ID); err != nil {
 		return nil, fmt.Errorf("orderService.Checkout: %w", err)

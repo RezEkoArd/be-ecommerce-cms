@@ -51,14 +51,21 @@ type couponModel struct {
 func (couponModel) TableName() string { return "coupons" }
 
 type orderModel struct {
-	ID        uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	UserID    uuid.UUID  `gorm:"type:uuid"`
-	CouponID  *uuid.UUID `gorm:"type:uuid"`
-	Status    string
-	Subtotal  decimal.Decimal `gorm:"type:numeric(12,2)"`
-	Tax       decimal.Decimal `gorm:"type:numeric(12,2)"`
-	Discount  decimal.Decimal `gorm:"type:numberic(12,2)"`
-	Total     decimal.Decimal `gorm:"type:numeric(12.2)"`
+	ID       uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	UserID   uuid.UUID  `gorm:"type:uuid"`
+	CouponID *uuid.UUID `gorm:"type:uuid"`
+	Status   string
+	Subtotal decimal.Decimal `gorm:"type:numeric(12,2)"`
+	Tax      decimal.Decimal `gorm:"type:numeric(12,2)"`
+	Discount decimal.Decimal `gorm:"type:numberic(12,2)"`
+	Total    decimal.Decimal `gorm:"type:numeric(12.2)"`
+
+	ShippingRecipient  string
+	ShippingPhone      string
+	ShippingStreet     string
+	ShippingCity       string
+	ShippingPostalCode string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -184,6 +191,12 @@ func (r *repository) CreateOrder(ctx context.Context, o *domain.Order, cartID uu
 			Tax:      o.Tax,
 			Discount: o.Discount,
 			Total:    o.Total,
+
+			ShippingRecipient:  o.Shipping.Recipient,
+			ShippingPhone:      o.Shipping.Phone,
+			ShippingStreet:     o.Shipping.Street,
+			ShippingCity:       o.Shipping.City,
+			ShippingPostalCode: o.Shipping.PostalCode,
 		}
 		if err := tx.Create(om).Error; err != nil {
 			return fmt.Errorf("insert order: %w", err)
@@ -398,6 +411,11 @@ func orderToDomain(m orderModel) domain.Order {
 		ID: m.ID, UserID: m.UserID, CouponID: m.CouponID,
 		Status:   domain.OrderStatus(m.Status),
 		Subtotal: m.Subtotal, Tax: m.Tax, Discount: m.Discount, Total: m.Total,
+		Shipping: domain.ShippingAddress{
+			Recipient: m.ShippingRecipient, Phone: m.ShippingPhone,
+			Street: m.ShippingStreet, City: m.ShippingCity,
+			PostalCode: m.ShippingPostalCode,
+		},
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }

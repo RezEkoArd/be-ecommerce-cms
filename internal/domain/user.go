@@ -19,7 +19,10 @@ type User struct {
 	Email        string
 	PasswordHash string
 	Role         Role
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	DeletedAt    *time.Time
+	// Opsional — diisi lewat halaman profil storefront.
+	Phone     string
+	BirthDate *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
 }
