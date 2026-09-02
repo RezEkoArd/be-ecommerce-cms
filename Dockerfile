@@ -1,0 +1,20 @@
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download 
+
+COPY . . 
+# CGO dimatikan agar binary statis dan bisa jalan di alpine.
+RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/main.go
+
+FROM alpine:latest
+# ca-certificates dibutuhkan agar Go bisa memanggil HTTPS (MinIO, dll).
+RUN apk add --no--cache ca-certificates tzdata
+WORKDIR /app
+
+COPY --from=builder /app/server .
+COPY --from=builder /app/migrations ./migrations
+
+EXPOSE 8080
+CMD ["/app/server"]

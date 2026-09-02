@@ -14,3 +14,7 @@ vendor/
 
 # OS / editor
 .DS_Store
+
+# Binary hasil build
+main
+
