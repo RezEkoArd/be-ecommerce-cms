@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/main.go
 
 FROM alpine:latest
 # ca-certificates dibutuhkan agar Go bisa memanggil HTTPS (MinIO, dll).
-RUN apk add --no--cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=builder /app/server .
